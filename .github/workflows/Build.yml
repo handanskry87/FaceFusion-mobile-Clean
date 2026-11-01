@@ -1,3 +1,5 @@
+YAML
+
 name: Build FaceFusion Mobile APK
 
 on:
@@ -41,9 +43,6 @@ jobs:
       - name: Accept Android Licenses
         run: yes | sdkmanager --licenses || true
 
-      # QNN headers and runtime libraries are intentionally gitignored.
-      # Download the public Qualcomm QAIRT SDK and stage the exact files
-      # required by work/android/stage_qnn.sh before Gradle starts.
       - name: Download Qualcomm QAIRT SDK
         run: |
           set -euo pipefail
@@ -69,9 +68,55 @@ jobs:
         working-directory: work/android
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Align and Sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK_PATH="$(find work/android/app/build/outputs/apk/release \
+            -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "APK bulunamadi!"
+            exit 1
+          fi
+
+          KEYSTORE="$RUNNER_TEMP/facefusion-debug.keystore"
+          OUTPUT="$RUNNER_TEMP/signed-apk"
+          mkdir -p "$OUTPUT"
+
+          keytool -genkeypair -v \
+            -keystore "$KEYSTORE" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+
+          "$BUILD_TOOLS/zipalign" -f -v 4 \
+            "$APK_PATH" \
+            "$OUTPUT/facefusion-aligned.apk"
+
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$OUTPUT/facefusion-mobile-release.apk" \
+            "$OUTPUT/facefusion-aligned.apk"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose \
+            "$OUTPUT/facefusion-mobile-release.apk"
+
+          echo "APK imzalandi ve dogrulandi."
+
+      - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FaceFusion-mobile-release
-          path: work/android/app/build/outputs/apk/release/*.apk
+          name: FaceFusion-mobile-SIGNED
+          path: ${{ runner.temp }}/signed-apk/facefusion-mobile-release.apk
           if-no-files-found: error
