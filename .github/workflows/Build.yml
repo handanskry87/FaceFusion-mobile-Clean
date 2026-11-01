@@ -1,3 +1,4 @@
+
 name: Build FaceFusion Mobile APK
 
 on:
@@ -7,8 +8,12 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -19,29 +24,34 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Setup NDK
-        uses: nttld/setup-ndk@v1
+        uses: android-actions/setup-android@v4
         with:
-          ndk-version: r26b
+          packages: platform-tools
+
+      - name: Install Android Build Dependencies
+        run: |
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
 
       - name: Accept Android Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        run: yes | sdkmanager --licenses || true
 
-      - name: Grant Execute Permission for Gradle
+      - name: Grant Execute Permission
         run: chmod +x work/android/gradlew
 
       - name: Build Release APK
-        run: |
-          cd work/android
-          ./gradlew assembleRelease --stacktrace
+        working-directory: work/android
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FaceFusion-mobile-no-censorship
+          name: FaceFusion-mobile-release
           path: work/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
