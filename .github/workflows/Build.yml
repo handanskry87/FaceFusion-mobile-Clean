@@ -1,4 +1,3 @@
-
 name: Build FaceFusion Mobile APK
 
 on:
@@ -41,6 +40,27 @@ jobs:
 
       - name: Accept Android Licenses
         run: yes | sdkmanager --licenses || true
+
+      # QNN headers and runtime libraries are intentionally gitignored.
+      # Download the public Qualcomm QAIRT SDK and stage the exact files
+      # required by work/android/stage_qnn.sh before Gradle starts.
+      - name: Download Qualcomm QAIRT SDK
+        run: |
+          set -euo pipefail
+          QAIRT_VERSION="2.47.0.260601"
+          QAIRT_ZIP="$RUNNER_TEMP/v${QAIRT_VERSION}.zip"
+          QAIRT_DIR="$RUNNER_TEMP/qairt"
+          curl --fail --location --retry 3 \
+            "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip" \
+            --output "$QAIRT_ZIP"
+          unzip -q "$QAIRT_ZIP" -d "$QAIRT_DIR"
+          echo "QNN_SDK_ROOT=$QAIRT_DIR/qairt/${QAIRT_VERSION}" >> "$GITHUB_ENV"
+          echo "QAIRT_VERSION=${QAIRT_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Stage QNN Headers and Android/Hexagon Runtimes
+        run: |
+          chmod +x work/android/stage_qnn.sh
+          bash work/android/stage_qnn.sh
 
       - name: Grant Execute Permission
         run: chmod +x work/android/gradlew
